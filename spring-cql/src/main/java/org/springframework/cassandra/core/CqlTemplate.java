@@ -15,66 +15,29 @@
  */
 package org.springframework.cassandra.core;
 
-import static org.springframework.cassandra.core.cql.CqlIdentifier.cqlId;
-
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.ColumnDefinitions.Definition;
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.querybuilder.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cassandra.core.cql.CqlIdentifier;
-import org.springframework.cassandra.core.cql.generator.AlterKeyspaceCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.AlterTableCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.CreateIndexCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.CreateKeyspaceCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.CreateTableCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.DropIndexCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.DropKeyspaceCqlGenerator;
-import org.springframework.cassandra.core.cql.generator.DropTableCqlGenerator;
-import org.springframework.cassandra.core.keyspace.AlterKeyspaceSpecification;
-import org.springframework.cassandra.core.keyspace.AlterTableSpecification;
-import org.springframework.cassandra.core.keyspace.CreateIndexSpecification;
-import org.springframework.cassandra.core.keyspace.CreateKeyspaceSpecification;
-import org.springframework.cassandra.core.keyspace.CreateTableSpecification;
-import org.springframework.cassandra.core.keyspace.DropIndexSpecification;
-import org.springframework.cassandra.core.keyspace.DropKeyspaceSpecification;
-import org.springframework.cassandra.core.keyspace.DropTableSpecification;
+import org.springframework.cassandra.core.cql.generator.*;
+import org.springframework.cassandra.core.keyspace.*;
 import org.springframework.cassandra.support.CassandraAccessor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.util.Assert;
 
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.ColumnDefinitions.Definition;
-import com.datastax.driver.core.Host;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ProtocolVersion;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SimpleStatement;
-import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.querybuilder.Batch;
-import com.datastax.driver.core.querybuilder.Delete;
-import com.datastax.driver.core.querybuilder.Insert;
-import com.datastax.driver.core.querybuilder.QueryBuilder;
-import com.datastax.driver.core.querybuilder.Select;
-import com.datastax.driver.core.querybuilder.Truncate;
-import com.datastax.driver.core.querybuilder.Update;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static org.springframework.cassandra.core.cql.CqlIdentifier.cqlId;
 
 /**
  * <b>This is the Central class in the Cassandra core package.</b> It simplifies the use of Cassandra and helps to avoid
@@ -572,7 +535,7 @@ public class CqlTemplate extends CassandraAccessor implements CqlOperations {
 		if (cols.size() == 0) {
 			return null;
 		}
-		return cols.getType(0).deserialize(row.getBytesUnsafe(0), ProtocolVersion.NEWEST_SUPPORTED);
+		return CodecRegistry.DEFAULT_INSTANCE.codecFor(cols.getType(0)).deserialize(row.getBytesUnsafe(0), ProtocolVersion.NEWEST_SUPPORTED);
 	}
 
 	/**
@@ -591,7 +554,7 @@ public class CqlTemplate extends CassandraAccessor implements CqlOperations {
 			String name = def.getName();
 			ByteBuffer bytes = row.getBytesUnsafe(name);
 			if (bytes != null) {
-			    map.put(name, def.getType().deserialize(bytes, ProtocolVersion.NEWEST_SUPPORTED));
+			    map.put(name, CodecRegistry.DEFAULT_INSTANCE.codecFor(def.getType()).deserialize(bytes, ProtocolVersion.NEWEST_SUPPORTED));
 			}
 		}
 

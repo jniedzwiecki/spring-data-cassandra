@@ -1,5 +1,6 @@
 package org.springframework.data.cassandra.repository.query;
 
+import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.ResultSet;
 import org.springframework.cassandra.core.cql.CqlIdentifier;
 import org.springframework.cassandra.core.cql.CqlStringUtils;
@@ -102,7 +103,7 @@ public class CassandraQueryMethod extends QueryMethod {
 				cnvAnn = type.getAnnotation(CassandraType.class);
 			}
 			if (cnvAnn != null) {
-				type = cnvAnn.type().asJavaClass();
+				type = CodecRegistry.DEFAULT_INSTANCE.codecFor(cnvAnn.type().toString()).getJavaType().getRawType();
 			}
 
 			// TODO: how about subtypes?
@@ -133,7 +134,7 @@ public class CassandraQueryMethod extends QueryMethod {
 							method));
 				}
 
-				Class<?> subtype = cnvAnn.typeArguments()[0].asJavaClass();
+				Class<?> subtype = CodecRegistry.DEFAULT_INSTANCE.codecFor(cnvAnn.typeArguments()[0]).getJavaType().getRawType();
 				collectionLikeParameterIndexes.put(i, subtype);
 			}
 			i++;

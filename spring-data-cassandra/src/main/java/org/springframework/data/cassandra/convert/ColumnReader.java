@@ -1,26 +1,43 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.springframework.data.cassandra.convert;
+
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.DataType.Name;
+import org.springframework.cassandra.core.cql.CqlIdentifier;
 
 import java.util.List;
 
-import org.springframework.cassandra.core.cql.CqlIdentifier;
-
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.Row;
-
 /**
  * Helpful class to read a column's value from a row, with possible type conversion.
- * 
+ *
  * @author Matthew T. Adams
+ * @author Antoine Toulme
+ * @author Mark Paluch
  */
 public class ColumnReader {
 
 	protected Row row;
 	protected ColumnDefinitions columns;
+	private final CodecRegistry codecRegistry;
 
 	public ColumnReader(Row row) {
 		this.row = row;
 		this.columns = row.getColumnDefinitions();
+		this.codecRegistry = CodecRegistry.DEFAULT_INSTANCE;
 	}
 
 	/**
@@ -38,70 +55,66 @@ public class ColumnReader {
 		return get(indexOf);
 	}
 
-	public Object get(int i) {
+	/**
+	 * Read data from a Column using the {@code index}.
+	 *
+	 * @param index
+	 * @return
+	 */
+	public Object get(int index) {
 
-		if (row.isNull(i)) {
+		if (row.isNull(index)) {
 			return null;
 		}
 
-		DataType type = columns.getType(i);
+		DataType type = columns.getType(index);
 
 		if (type.isCollection()) {
+			return getCollection(index, type);
+		}
 
-			List<DataType> collectionTypes = type.getTypeArguments();
-			if (collectionTypes.size() == 2) {
-				return row.getMap(i, collectionTypes.get(0).asJavaClass(), collectionTypes.get(1).asJavaClass());
+		if (Name.TUPLE.equals(type.getName())) {
+			return row.getTupleValue(index);
+		}
+
+		if (Name.UDT.equals(type.getName())) {
+			return row.getUDTValue(index);
+		}
+
+		return row.getObject(index);
+	}
+
+	public Object getCollection(int i, DataType type) {
+
+		List<DataType> collectionTypes = type.getTypeArguments();
+
+		// List/Set
+		if (collectionTypes.size() == 1) {
+
+			DataType valueType = collectionTypes.get(0);
+			TypeCodec<Object> typeCodec = codecRegistry.codecFor(valueType);
+			if (type.equals(DataType.list(valueType))) {
+				return row.getList(i, typeCodec.getJavaType().getRawType());
 			}
 
-			if (type.equals(DataType.list(collectionTypes.get(0)))) {
-				return row.getList(i, collectionTypes.get(0).asJavaClass());
+			if (type.equals(DataType.set(valueType))) {
+				return row.getSet(i, typeCodec.getJavaType().getRawType());
 			}
 
-			if (type.equals(DataType.set(collectionTypes.get(0)))) {
-				return row.getSet(i, collectionTypes.get(0).asJavaClass());
-			}
-
-			throw new IllegalStateException("Unknown Collection type encountered.  Valid collections are Set, List and Map.");
 		}
 
-		if (type.equals(DataType.text()) || type.equals(DataType.ascii()) || type.equals(DataType.varchar())) {
-			return row.getString(i);
-		}
-		if (type.equals(DataType.cint())) {
-			return new Integer(row.getInt(i));
-		}
-		if (type.equals(DataType.varint())) {
-			return row.getVarint(i);
-		}
-		if (type.equals(DataType.cdouble())) {
-			return new Double(row.getDouble(i));
-		}
-		if (type.equals(DataType.bigint()) || type.equals(DataType.counter())) {
-			return new Long(row.getLong(i));
-		}
-		if (type.equals(DataType.cfloat())) {
-			return new Float(row.getFloat(i));
-		}
-		if (type.equals(DataType.decimal())) {
-			return row.getDecimal(i);
-		}
-		if (type.equals(DataType.cboolean())) {
-			return new Boolean(row.getBool(i));
-		}
-		if (type.equals(DataType.timestamp())) {
-			return row.getDate(i);
-		}
-		if (type.equals(DataType.blob())) {
-			return row.getBytes(i);
-		}
-		if (type.equals(DataType.inet())) {
-			return row.getInet(i);
-		}
-		if (type.equals(DataType.uuid()) || type.equals(DataType.timeuuid())) {
-			return row.getUUID(i);
+		// Map
+		if (collectionTypes.size() == 2) {
+
+			DataType keyType = collectionTypes.get(0);
+			TypeCodec<Object> keyTypeCodec = codecRegistry.codecFor(keyType);
+
+			DataType valueType = collectionTypes.get(1);
+			TypeCodec<Object> valueTypeCodec = codecRegistry.codecFor(valueType);
+			return row.getMap(i, keyTypeCodec.getJavaType().getRawType(), valueTypeCodec.getJavaType().getRawType());
 		}
 
-		return row.getBytesUnsafe(i);
+		throw new IllegalStateException("Unknown Collection type encountered.  Valid collections are Set, List and Map.");
 	}
 
 	public Row getRow() {
@@ -110,7 +123,7 @@ public class ColumnReader {
 
 	/**
 	 * Returns the row's column value as an instance of the given type.
-	 * 
+	 *
 	 * @throws ClassCastException if the value cannot be converted to the requested type.
 	 */
 	public <T> T get(CqlIdentifier name, Class<T> requestedType) {
@@ -119,7 +132,7 @@ public class ColumnReader {
 
 	/**
 	 * Returns the row's column value as an instance of the given type.
-	 * 
+	 *
 	 * @throws ClassCastException if the value cannot be converted to the requested type.
 	 */
 	public <T> T get(String name, Class<T> requestedType) {
@@ -128,7 +141,7 @@ public class ColumnReader {
 
 	/**
 	 * Returns the row's column value as an instance of the given type.
-	 * 
+	 *
 	 * @throws ClassCastException if the value cannot be converted to the requested type.
 	 */
 	@SuppressWarnings("unchecked")
@@ -144,6 +157,7 @@ public class ColumnReader {
 	}
 
 	private int getColumnIndex(String name) {
+
 		int indexOf = columns.getIndexOf(name);
 		if (indexOf == -1) {
 			throw new IllegalArgumentException("Column does not exist in Cassandra table: " + name);

@@ -15,18 +15,13 @@
  */
 package org.springframework.data.cassandra.mapping;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.datastax.driver.core.CodecRegistry;
+import com.datastax.driver.core.DataType;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.data.mapping.model.SimpleTypeHolder;
 import org.springframework.data.util.TypeInformation;
 
-import com.datastax.driver.core.DataType;
+import java.util.*;
 
 /**
  * Simple constant holder for a {@link SimpleTypeHolder} enriched with Cassandra specific simple types.
@@ -59,7 +54,7 @@ public class CassandraSimpleTypeHolder extends SimpleTypeHolder {
 
 		for (DataType dataType : DataType.allPrimitiveTypes()) {
 
-			Class<?> javaClass = dataType.asJavaClass();
+			Class<?> javaClass = CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType).getJavaType().getRawType();
 			simpleTypes.add(javaClass);
 
 			dataTypesByJavaClass.put(javaClass, dataType);
